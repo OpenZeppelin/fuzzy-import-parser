@@ -1,0 +1,11 @@
+{
+  "extends": "code-style/tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "allowJs": true,
+    "experimentalDecorators": true
+  },
+  "include": [
+    "src/**/*"
+  ]
+}

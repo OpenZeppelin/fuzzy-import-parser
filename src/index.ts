@@ -61,12 +61,6 @@ export class Parser {
       return this.consumePragma();
     }
 
-    // const keyword = ['contract', 'library', 'interface'].find(kw => this.peek(kw));
-
-    // if (keyword !== undefined) { 
-    //   return this.consumeContract(keyword);
-    // }
-
     throw new Error(`Unexpected input '${this.source.slice(this.index, this.index + 3)}'`);
   }
 
@@ -122,7 +116,6 @@ export class Parser {
     };
   }
 
-  // TODO: handle different pragmas
   consumePragma(): Token {
     this.consumeLiteral('pragma');
     this.consumeWhitespace();
@@ -169,22 +162,6 @@ export class Parser {
     } else {
       throw new Error(`Expected token '${token}' got '${this.source.slice(this.index, this.index + 3)}...'`);
     }
-  }
-
-  consumeContract(keyword: string): Token {
-    this.consumeLiteral(keyword);
-    this.consumeWhitespace();
-    this.consumeIdentifier(); 
-    this.consumeWhitespace();
-    if (this.peek('is')) {
-      this.consumeBlock('(', ')');
-      this.consumeWhitespace();
-    }
-
-    return {
-      kind: TokenKind.Contract,
-      value: '',
-    };
   }
 
   consumeBlock(open: string, close: string): void {

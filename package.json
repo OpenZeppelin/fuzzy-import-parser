@@ -1,5 +1,5 @@
 {
-  "name": "fuzzy-import-parser",
+  "name": "@openzeppelin/fuzzy-solidity-import-parser",
   "version": "0.1.0",
   "main": "dist/index.js",
   "scripts": {

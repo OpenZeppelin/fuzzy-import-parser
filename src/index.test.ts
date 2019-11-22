@@ -2,13 +2,11 @@ import test from 'ava';
 
 import { getMetadata, Parser, TokenKind } from '.';
 
-// test('parses empty file', t => {
-//   t.deepEqual(parseImports(''), []);
-// });
-
-// test('parses normal import', t => {
-//   t.deepEqual(parseImports('import "./token.sol";'), ["./token.sol"]);
-// });
+test('parses empty file', t => {
+  const { imports, solidity } = getMetadata('')
+  t.deepEqual(imports, []);
+  t.deepEqual(solidity, []);
+});
 
 test('gets import token', t => {
   const parser = new Parser('import "./token.sol";');
@@ -194,4 +192,11 @@ test('skips inheritance with constructor argument struct', t => {
   t.deepEqual(imports, ["./token.sol"]);
 });
 
-// unbalanced delimiters
+test('gets false positive import', t => {
+  const { imports } = getMetadata(`
+    contract Foo {
+      import "./token.sol";
+    }
+  `);
+  t.deepEqual(imports, ["./token.sol"]);
+});

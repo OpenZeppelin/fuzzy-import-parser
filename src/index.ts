@@ -10,10 +10,6 @@ export function getMetadata(source: string): Metadata {
   const parser = new Parser(source);
 
   for (const item of parser.parse()) {
-    if (item === undefined) {
-      break;
-    }
-
     if (item.kind === 'import') {
       imports.push(item.value);
     }

@@ -72,6 +72,8 @@ class Parser {
   }
 
   private next(semicolons: boolean): Item | undefined {
+    // TODO: reconsider if this optimization is necessary. some measurements
+    // didn't show any difference
     const re = semicolons ? /import|pragma|\/\*|\/\/|"|'|;/ : /import|pragma|\/\*|\/\/|"|'/;
 
     const match = this.state.exec(re);

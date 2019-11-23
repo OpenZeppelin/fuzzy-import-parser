@@ -3,79 +3,170 @@ interface Metadata {
   solidity: string[];
 }
 
-export function getMetadata(source: string) {
+export function getMetadata(source: string): Metadata {
+  const imports = [];
+  const solidity = [];
+
   const parser = new Parser(source);
 
-  while (!parser.eof()) {
-    console.log(parser.next());
+  for (const item of parser.parse()) {
+    if (item === undefined) {
+      break;
+    }
+
+    if (item.kind === 'import') {
+      imports.push(item.value);
+    }
+
+    if (item.kind === 'pragma' && item.name === 'solidity') {
+      solidity.push(item.value);
+    }
   }
+
+  return { imports, solidity };
 }
 
-type Item = ItemImport | ItemString | ItemEOF;
+type Item = ItemBounds & (ImportItem | PragmaItem | CommentItem | StringItem | SemicolonItem);
 
-interface ItemEOF {
-  kind: 'eof';
+interface ItemBounds {
+  start: number;
+  end: number;
 }
 
-interface ItemImport {
+interface ImportItem {
   kind: 'import';
-  path: string;
+  value: string;
 }
 
-interface ItemString {
+interface PragmaItem {
+  kind: 'pragma';
+  name: string;
+  value: string;
+}
+
+interface CommentItem {
+  kind: 'comment';
+}
+
+interface StringItem {
   kind: 'string';
   value: string;
 }
 
+interface SemicolonItem {
+  kind: 'semicolon';
+}
+
 class Parser {
-  readonly state: StatefulRegExp;
+  private readonly state: StatefulRegExp;
 
   constructor(readonly source: string) {
     this.state = new StatefulRegExp(source);
   }
 
-  eof(): boolean {
-    return this.state.index >= this.source.length;
+  *parse(semicolons: boolean = false): Generator<Item> {
+    while (true) {
+      const item = this.next(semicolons);
+      if (item === undefined) {
+        break;
+      } else {
+        yield item;
+      }
+    }
   }
 
-  next(): Item | undefined {
-    const match = this.state.exec(/import|pragma|\/\*|\/\/|"|'/);
+  private next(semicolons: boolean): Item | undefined {
+    const re = semicolons ? /import|pragma|\/\*|\/\/|"|'|;/ : /import|pragma|\/\*|\/\/|"|'/;
+
+    const match = this.state.exec(re);
 
     if (match === null) {
-      return;
+      return undefined;
     }
 
-    if (match[0] === 'pragma') {
-      while (!this.eof()) {
+    const anchor = match[0];
+    const start = match.index;
+
+    if (anchor === 'pragma') {
+      const name = this.state.exec(/[a-zA-Z0-9$_]+/)?.[0];
+
+      if (name !== undefined) {
+        let value = '';
+
+        let chunkStart = this.state.index;
+        let end = -1;
+
+        for (const item of this.parse(true)) {
+          if (item.kind === 'comment' || item.kind === 'semicolon') {
+            value += this.source.slice(chunkStart, item.start);
+            chunkStart = item.end;
+          }
+
+          if (item.kind === 'semicolon') {
+            end = item.start;
+            break;
+          }
+        }
+
+        return {
+          kind: 'pragma',
+          name,
+          value,
+          start,
+          end,
+        };
       }
     }
 
-    if (match[0] === 'import') {
-      while (!this.eof()) {
-        const token = this.next();
-
-        if (token?.kind === 'string') {
+    else if (anchor === 'import') {
+      for (const item of this.parse()) {
+        if (item.kind === 'string') {
           return {
             kind: 'import',
-            path: token.value,
+            value: item.value,
+            end: item.end,
+            start,
           };
         }
       }
     }
 
-    if (match[0] === '"' || match[0] === `'`) {
-      const delimiter = match[0];
-      const start = this.state.index;
-      this.state.exec(delimiter);
-      const end = this.state.index - 1;
+    else if (anchor === '"' || anchor === `'`) {
+      const contentStart = this.state.index;
+      this.state.exec(anchor);
+      const contentEnd = this.state.index - 1;
       return {
         kind: 'string',
-        value: this.source.slice(start, end),
+        value: this.source.slice(contentStart, contentEnd),
+        start,
+        end: this.state.index,
       };
     }
 
-    if (match[0] === '/*') {
-      this.state.exec(/\*\//);
+    else if (anchor === '/*') {
+      const close = this.state.exec(/\*\//);
+      return {
+        kind: 'comment',
+        start,
+        end: this.state.index,
+      };
+    }
+
+    else if (anchor === '//') {
+      const close = this.state.exec(/\n/);
+      return {
+        kind: 'comment',
+        start,
+        end: close?.index ?? this.state.index,
+      };
+    }
+
+    else if (anchor === ';') {
+      return {
+        kind: 'semicolon',
+        start,
+        end: this.state.index,
+      };
     }
   }
 }
@@ -97,5 +188,3 @@ class StatefulRegExp {
     return match;
   }
 }
-
-console.log(getMetadata('import /*x*/ "x";'));

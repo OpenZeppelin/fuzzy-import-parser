@@ -1,241 +1,190 @@
-// TODO: consider "EOF" token
-export enum TokenKind {
-  Import = 'import',
-  Pragma = 'pragma',
-  Contract = 'contract',
-}
-
-interface Token {
-  kind: TokenKind;
-  name?: string;
-  value: string;
-}
-
 interface Metadata {
   imports: string[];
   solidity: string[];
 }
 
 export function getMetadata(source: string): Metadata {
-  return new Parser(source).getMetadata();
+  const imports = [];
+  const solidity = [];
+
+  const parser = new Parser(source);
+
+  for (const item of parser.parse()) {
+    if (item === undefined) {
+      break;
+    }
+
+    if (item.kind === 'import') {
+      imports.push(item.value);
+    }
+
+    if (item.kind === 'pragma' && item.name === 'solidity') {
+      solidity.push(item.value);
+    }
+  }
+
+  return { imports, solidity };
 }
 
-export class Parser {
+type Item = ItemBounds & (ImportItem | PragmaItem | CommentItem | StringItem | SemicolonItem);
+
+interface ItemBounds {
+  start: number;
+  end: number;
+}
+
+interface ImportItem {
+  kind: 'import';
+  value: string;
+}
+
+interface PragmaItem {
+  kind: 'pragma';
+  name: string;
+  value: string;
+}
+
+interface CommentItem {
+  kind: 'comment';
+}
+
+interface StringItem {
+  kind: 'string';
+  value: string;
+}
+
+interface SemicolonItem {
+  kind: 'semicolon';
+}
+
+class Parser {
+  private readonly state: StatefulRegExp;
+
+  constructor(readonly source: string) {
+    this.state = new StatefulRegExp(source);
+  }
+
+  *parse(semicolons: boolean = false): Generator<Item> {
+    while (true) {
+      const item = this.next(semicolons);
+      if (item === undefined) {
+        break;
+      } else {
+        yield item;
+      }
+    }
+  }
+
+  private next(semicolons: boolean): Item | undefined {
+    const re = semicolons ? /import|pragma|\/\*|\/\/|"|'|;/ : /import|pragma|\/\*|\/\/|"|'/;
+
+    const match = this.state.exec(re);
+
+    if (match === null) {
+      return undefined;
+    }
+
+    const anchor = match[0];
+    const start = match.index;
+
+    if (anchor === 'pragma') {
+      const name = this.state.exec(/[a-zA-Z0-9$_]+/)?.[0];
+
+      if (name !== undefined) {
+        let value = '';
+
+        let chunkStart = this.state.index;
+        let end = -1;
+
+        for (const item of this.parse(true)) {
+          if (item.kind === 'comment' || item.kind === 'semicolon') {
+            value += this.source.slice(chunkStart, item.start);
+            chunkStart = item.end;
+          }
+
+          if (item.kind === 'semicolon') {
+            end = item.start;
+            break;
+          }
+        }
+
+        return {
+          kind: 'pragma',
+          name,
+          value,
+          start,
+          end,
+        };
+      }
+    }
+
+    else if (anchor === 'import') {
+      for (const item of this.parse()) {
+        if (item.kind === 'string') {
+          return {
+            kind: 'import',
+            value: item.value,
+            end: item.end,
+            start,
+          };
+        }
+      }
+    }
+
+    else if (anchor === '"' || anchor === `'`) {
+      const contentStart = this.state.index;
+      this.state.exec(anchor);
+      const contentEnd = this.state.index - 1;
+      return {
+        kind: 'string',
+        value: this.source.slice(contentStart, contentEnd),
+        start,
+        end: this.state.index,
+      };
+    }
+
+    else if (anchor === '/*') {
+      const close = this.state.exec(/\*\//);
+      return {
+        kind: 'comment',
+        start,
+        end: this.state.index,
+      };
+    }
+
+    else if (anchor === '//') {
+      const close = this.state.exec(/\n/);
+      return {
+        kind: 'comment',
+        start,
+        end: close?.index ?? this.state.index,
+      };
+    }
+
+    else if (anchor === ';') {
+      return {
+        kind: 'semicolon',
+        start,
+        end: this.state.index,
+      };
+    }
+  }
+}
+
+class StatefulRegExp {
   index: number = 0;
 
   constructor(readonly source: string) {}
 
-  getMetadata(): Metadata {
-    const imports = [];
-    const solidity = [];
-
-    while (true) {
-      const token = this.consume();
-
-      if (!token) {
-        break;
-      }
-
-      if (token.kind === TokenKind.Import) {
-        imports.push(token.value);
-      } else if (token.kind === TokenKind.Pragma && token.name! === 'solidity') {
-        solidity.push(token.value);
-      }
-    }
-
-    return { imports, solidity };
-  }
-
-  consume(): Token | undefined {
-    this.consumeUntilImportOrPragma();
-
-    if (this.index >= this.source.length) {
-      return undefined;
-    }
-
-    if (this.source.startsWith('import', this.index)) {
-      return this.consumeImport();
-    }
-
-    if (this.source.startsWith('pragma', this.index)) {
-      return this.consumePragma();
-    }
-
-    throw new Error(`Unexpected input '${this.source.slice(this.index, this.index + 3)}'`);
-  }
-
-  consumeUntilImportOrPragma(): void {
-    while (this.index < this.source.length) {
-      if (this.peek('import') || this.peek('pragma')) {
-        break;
-      }
-
-      if (this.peek('/*')) {
-        this.consumeComment();
-      } else if (this.peek('//')) {
-        this.consumeLineComment();
-      } else if (this.peek(`"`) || this.peek(`'`)) {
-        this.consumeString();
-      } else {
-        this.index += 1;
-      }
-    }
-  }
-
-  consumeWhitespace(): void {
-    while (true) {
-      if (this.peek('/*')) {
-        this.consumeComment();
-      } else if (this.peek('//')) {
-        this.consumeLineComment();
-      } else if (isWhitespace(this.peekChar())) {
-        do {
-          this.index += 1;
-        } while (isWhitespace(this.peekChar()));
-      } else {
-        break;
-      }
-    }
-  }
-
-  consumeImport(): Token {
-    this.consumeLiteral('import');
-    this.consumeWhitespace();
-    if (this.peek('{')) {
-      this.consumeBlock('{', '}');
-      this.consumeWhitespace();
-      this.consumeLiteral('from');
-      this.consumeWhitespace();
-    }
-    const value = this.consumeString();
-    this.consumeWhitespace();
-    this.consumeChar(';');
-    return {
-      kind: TokenKind.Import,
-      value,
-    };
-  }
-
-  consumePragma(): Token {
-    this.consumeLiteral('pragma');
-    this.consumeWhitespace();
-    const name = this.consumeIdentifier();
-    this.consumeWhitespace();
-    const value = this.consumeUntil(';');
-    return {
-      kind: TokenKind.Pragma,
-      name, 
-      value,
-    };
-  }
-
-  consumeString(): string {
-    const delimiter = this.consumeChar();
-
-    if ([`"`, `'`].includes(delimiter)) {
-      let value = '';
-
-      let curr;
-      while ((curr = this.consumeChar()) !== delimiter) {
-        value += curr;
-      }
-
-      return value;
+  exec(re: RegExp | string): RegExpExecArray | null {
+    const sticky = new RegExp(re, 'g');
+    sticky.lastIndex = this.index;
+    const match = sticky.exec(this.source);
+    if (match === null) {
+      this.index = this.source.length;
     } else {
-      throw new Error(`Expected string got '${delimiter}'`);
+      this.index = sticky.lastIndex;
     }
+    return match;
   }
-
-  consumeUntil(delimiter: string): string {
-    let value = '';
-    while (!this.peek(delimiter)) {
-      const char = this.consumeChar();
-      value += char;
-    }
-    this.index += delimiter.length;
-    return value;
-  }
-
-  consumeLiteral(token: string): void {
-    if (this.source.startsWith(token, this.index)) {
-      this.index += token.length;
-    } else {
-      throw new Error(`Expected token '${token}' got '${this.source.slice(this.index, this.index + 3)}...'`);
-    }
-  }
-
-  consumeBlock(open: string, close: string): void {
-    let depth = 0;
-
-    while (this.index <= this.source.length) {
-      if (this.peek(open)) {
-        depth += 1;
-        this.index += 1;
-      } else if (this.peek(close)) {
-        depth -= 1;
-        this.index += 1;
-
-        if (depth <= 0) {
-          break;
-        }
-      } else if (this.peek('/*')) {
-        this.consumeComment();
-      } else if (this.peek('//')) {
-        this.consumeLineComment();
-      } else if (this.peek(`"`) || this.peek(`'`)) {
-        this.consumeString();
-      } else {
-        this.index += 1;
-      }
-    }
-
-    if (depth !== 0) {
-      throw new Error('Unbalanced delimiters');
-    }
-  }
-
-  consumeComment(): void {
-    this.consumeLiteral('/*');
-    this.consumeUntil('*/');
-  }
-
-  consumeLineComment(): void {
-    this.consumeLiteral('//');
-    this.consumeUntil('\n');
-  }
-
-  consumeChar(expected?: string): string {
-    const char = this.source[this.index];
-    this.index += 1;
-    if (expected && char !== expected) {
-      throw new Error(`Expected character '${expected}' got '${char}'`);
-    }
-    return char;
-  }
-
-  consumeIdentifier(): string {
-    let value = '';
-    while (this.index <= this.source.length) {
-      const char = this.consumeChar();
-      if (/[a-zA-Z0-9$_]/.test(char)) {
-        value += char;
-      } else {
-        break;
-      }
-    }
-    return value;
-  }
-
-  peekChar(): string {
-    return this.source[this.index];
-  }
-
-  peek(str: string): boolean {
-    return this.source.startsWith(str, this.index);
-  }
-
-}
-
-function isWhitespace(char: string) {
-  return [' ', '\n', '\t', '\r', '\u000c'].includes(char);
 }

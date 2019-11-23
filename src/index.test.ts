@@ -1,45 +1,11 @@
 import test from 'ava';
 
-import { getMetadata, Parser, TokenKind } from '.';
+import { getMetadata } from '.';
 
 test('parses empty file', t => {
   const { imports, solidity } = getMetadata('')
   t.deepEqual(imports, []);
   t.deepEqual(solidity, []);
-});
-
-test('gets import token', t => {
-  const parser = new Parser('import "./token.sol";');
-  const token = parser.consume()!;
-
-  t.is(token.kind, TokenKind.Import);
-  t.is(token.value, "./token.sol");
-});
-
-test('gets pragma token', t => {
-  const parser = new Parser('pragma solidity ^0.5.0;');
-  const token = parser.consume()!;
-
-  t.is(token.kind, TokenKind.Pragma);
-  t.is(token.value, "^0.5.0");
-});
-
-test('gets single import', t => {
-  const parser = new Parser('import "./token.sol";');
-  const { imports } = parser.getMetadata();
-  t.deepEqual(imports, ["./token.sol"]);
-});
-
-test('gets two imports', t => {
-  const parser = new Parser('import "./token.sol"; import "./token2.sol";');
-  const { imports } = parser.getMetadata();
-  t.deepEqual(imports, ["./token.sol", "./token2.sol"]);
-});
-
-test('gets two pragmas', t => {
-  const parser = new Parser('pragma solidity ^0.5.0; pragma solidity ^0.5.1;');
-  const { solidity } = parser.getMetadata();
-  t.deepEqual(solidity, ["^0.5.0", "^0.5.1"]);
 });
 
 test('skips a contract', t => {
@@ -142,7 +108,7 @@ test('ignores other pragmas', t => {
     pragma abiEncoderV2 true;
     pragma solidity ^0.5.0;
   `);
-  t.deepEqual(solidity, ["^0.5.0"]);
+  t.deepEqual(solidity, [" ^0.5.0"]);
 });
 
 test('skips a contract with inheritance', t => {
@@ -199,4 +165,9 @@ test('gets false positive import', t => {
     }
   `);
   t.deepEqual(imports, ["./token.sol"]);
+});
+
+test('skips comment in pragma', t => {
+  const { solidity } = getMetadata('pragma solidity >=0.5.0 /* right? */ <0.6;');
+  t.deepEqual(solidity, [" >=0.5.0  <0.6"]);
 });

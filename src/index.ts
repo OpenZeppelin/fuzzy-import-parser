@@ -151,6 +151,9 @@ export class Parser {
     while (!this.peek(delimiter)) {
       const char = this.consumeChar();
       value += char;
+      if (this.index >= this.source.length) {
+        return value;
+      }
     }
     this.index += delimiter.length;
     return value;

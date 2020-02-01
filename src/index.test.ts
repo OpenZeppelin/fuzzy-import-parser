@@ -200,3 +200,18 @@ test('gets false positive import', t => {
   `);
   t.deepEqual(imports, ["./token.sol"]);
 });
+
+test('handles line comment not ending in newline', t => {
+  const { imports } = getMetadata(`import "./foo.sol"; // import "./token.sol";`);
+  t.deepEqual(imports, ["./foo.sol"]);
+});
+
+test('handles multiline comment not closed', t => {
+  const { imports } = getMetadata(`import "./foo.sol"; /* import "./token.sol";`);
+  t.deepEqual(imports, ["./foo.sol"]);
+});
+
+test('handles pragma statement not ending in semicolon', t => {
+  const { solidity } = getMetadata(`pragma solidity ^0.5.0`);
+  t.deepEqual(solidity, ["^0.5.0"]);
+});

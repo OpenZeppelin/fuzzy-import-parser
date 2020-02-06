@@ -215,3 +215,33 @@ test('handles pragma statement not ending in semicolon', t => {
   const { solidity } = getMetadata(`pragma solidity ^0.5.0`);
   t.deepEqual(solidity, ["^0.5.0"]);
 });
+
+test('import all from file', t => {
+  const { imports } = getMetadata(`import * as token from "./token.sol"; contract Foo { }`);
+  t.deepEqual(imports, ["./token.sol"]);
+});
+
+test('import aliased file', t => {
+  const { imports } = getMetadata(`import "./token.sol" as token; contract Foo { }`);
+  t.deepEqual(imports, ["./token.sol"]);
+});
+
+test('import single from file', t => {
+  const { imports } = getMetadata(`import { token } from "./token.sol"; contract Foo { }`);
+  t.deepEqual(imports, ["./token.sol"]);
+});
+
+test('import single with alias from file', t => {
+  const { imports } = getMetadata(`import { token as erc20 } from "./token.sol"; contract Foo { }`);
+  t.deepEqual(imports, ["./token.sol"]);
+});
+
+test('import multiple from file', t => {
+  const { imports } = getMetadata(`import { token, crowdsale } from "./token.sol"; contract Foo { }`);
+  t.deepEqual(imports, ["./token.sol"]);
+});
+
+test('import multiple with aliases from file', t => {
+  const { imports } = getMetadata(`import { token as erc20, crowdsale as ico } from "./token.sol"; contract Foo { }`);
+  t.deepEqual(imports, ["./token.sol"]);
+});

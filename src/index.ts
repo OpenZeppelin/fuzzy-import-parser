@@ -101,14 +101,38 @@ export class Parser {
   consumeImport(): Token {
     this.consumeLiteral('import');
     this.consumeWhitespace();
+    
+    // import { foo, bar as baz } from 'file';
     if (this.peek('{')) {
       this.consumeBlock('{', '}');
       this.consumeWhitespace();
       this.consumeLiteral('from');
       this.consumeWhitespace();
+    } 
+    // import * as foo from 'file';
+    else if (this.peek('*')) {
+      this.consumeLiteral('*');
+      this.consumeWhitespace();
+      this.consumeLiteral('as');
+      this.consumeWhitespace();
+      this.consumeIdentifier();
+      this.consumeWhitespace();
+      this.consumeLiteral('from');
+      this.consumeWhitespace();
     }
+    
+    // Consume filename
     const value = this.consumeString();
     this.consumeWhitespace();
+    
+    // import 'file' as foo;
+    if (this.peek('as')) {
+      this.consumeLiteral('as');
+      this.consumeWhitespace();
+      this.consumeIdentifier();
+      this.consumeWhitespace();
+    }
+
     this.consumeChar(';');
     return {
       kind: TokenKind.Import,
@@ -223,6 +247,7 @@ export class Parser {
       if (/[a-zA-Z0-9$_]/.test(char)) {
         value += char;
       } else {
+        this.index -= 1;
         break;
       }
     }
